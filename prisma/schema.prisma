@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id              String    @id @default(uuid())
+  stripeId        String    @unique @map("stripe_id")
+  email           String    @unique
+  name            String?
+  phone           String?
+  crmId           String?   @unique @map("crm_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  payments        Payment[]
+  properties      Property[]
+
+  @@map("customers")
+}
+
+model Payment {
+  id                    String         @id @default(uuid())
+  stripePaymentIntentId String         @unique @map("stripe_payment_intent_id")
+  customerId            String         @map("customer_id")
+  amount                Int            // Amount in cents
+  currency              String         @default("usd")
+  status                PaymentStatus
+  description           String?
+  propertyId            String?        @map("property_id")
+
+  // CRM sync tracking
+  syncedToCrm           Boolean        @default(false) @map("synced_to_crm")
+  crmSyncAttempts       Int            @default(0) @map("crm_sync_attempts")
+  lastCrmSyncAt         DateTime?      @map("last_crm_sync_at")
+  crmSyncError          String?        @map("crm_sync_error")
+
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  customer              Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  property              Property?      @relation(fields: [propertyId], references: [id])
+  webhookEvents         WebhookEvent[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([syncedToCrm])
+  @@map("payments")
+}
+
+model Property {
+  id              String    @id @default(uuid())
+  address         String
+  city            String
+  state           String
+  zipCode         String    @map("zip_code")
+  price           Int       // Price in cents
+  ownerId         String    @map("owner_id")
+  status          String    @default("available")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  owner           Customer  @relation(fields: [ownerId], references: [id])
+  payments        Payment[]
+
+  @@index([ownerId])
+  @@map("properties")
+}
+
+model WebhookEvent {
+  id              String    @id @default(uuid())
+  stripeEventId   String    @unique @map("stripe_event_id")
+  type            String
+  paymentId       String?   @map("payment_id")
+  processed       Boolean   @default(false)
+  processingError String?   @map("processing_error")
+  retryCount      Int       @default(0) @map("retry_count")
+  payload         Json
+  receivedAt      DateTime  @default(now()) @map("received_at")
+  processedAt     DateTime? @map("processed_at")
+
+  payment         Payment?  @relation(fields: [paymentId], references: [id])
+
+  @@index([stripeEventId])
+  @@index([processed])
+  @@index([type])
+  @@map("webhook_events")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+}
