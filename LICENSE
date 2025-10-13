@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ADDITIONAL DISCLAIMERS:
-- This is a recreated demonstration, not the original client project
+- This is adapted from a client project, not the original codebase
 - No client code, data, or proprietary information is included
 - The author makes no claims about production readiness
 - Users assume all risks when using or adapting this code
