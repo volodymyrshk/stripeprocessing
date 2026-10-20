@@ -1,7 +1,5 @@
 # Payment Automation System
 
-[![CI](https://github.com/volodymyrshk/stripeprocessing/actions/workflows/ci.yml/badge.svg)](https://github.com/volodymyrshk/stripeprocessing/actions/workflows/ci.yml)
-
 Automated payment sync between Stripe, PostgreSQL, and CRM - adapted from a client project
 
 ## About
