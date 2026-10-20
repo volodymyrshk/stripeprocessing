@@ -11,6 +11,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Generate Prisma Client (tsc compiles the whole project, which imports it)
+RUN npx prisma generate
+
 # Build TypeScript
 RUN npm run build
 
