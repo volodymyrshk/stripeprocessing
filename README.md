@@ -1,89 +1,66 @@
-# Payment Automation System
+# Stripe → PostgreSQL → CRM
 
-Automated payment sync between Stripe, PostgreSQL, and CRM - adapted from a client project
+A TypeScript payment-sync sample: verify Stripe webhooks, record payment state in PostgreSQL and sync it to a mock CRM, with Redis duplicate checks, payment locks and retries.
 
-## About
+**Node.js · TypeScript · Express · Prisma · PostgreSQL · Redis · Docker**
 
-Adapted from a project I built for a real-estate client. Removed proprietary code, replaced their CRM with a mock API, stripped identifying info. Core architecture, retry logic, and webhook handling are the same approach I used in production. Client asked me not to share original code publicly.
+This is a public sample illustrating payment-integration patterns. It contains a mock CRM and is not the confidential production implementation or evidence of client revenue, adoption or measured time savings.
 
-## The Problem
+## Read the system
 
-Client manually copied payment data between Stripe, database, and CRM. 10-15 hrs/week, constant errors.
+```text
+Stripe event → raw-body signature verification → event record
+             → payment processing → PostgreSQL → mock CRM
+                                      ↑            │
+                                      └─ retry ────┘
+```
 
-## The Solution
+| Question | Code |
+| --- | --- |
+| How is the original payload verified? | [HTTP receiver](src/index.ts), [Stripe handler](src/services/stripe-webhook.ts) |
+| How are events and payment records represented? | [Prisma schema](prisma/schema.prisma) |
+| How are duplicate checks and payment locks handled? | [Redis client](src/utils/redis-client.ts), [payment processor](src/services/payment-processor.ts) |
+| What happens when the CRM fails? | [CRM adapter](src/services/crm-integration.ts), [retry handler](src/utils/retry-handler.ts) |
+| What is covered by tests? | [Redis and retry tests](tests/webhook.test.ts) |
 
-Event-driven automation:
-- Stripe webhook → verify → check Redis (idempotency) → store in PostgreSQL → sync to CRM (with retry)
-- Background job retries failures every 5 minutes
+## Local setup
 
-**Results:** Eliminated hours of manual work each week, cut down errors.
-
-**Stack:** Node.js, TypeScript, Express, PostgreSQL, Redis, Prisma, Docker
-
----
-
-## Quick Start
+Use a current Node release with `--env-file` support, Docker Compose and Stripe **test-mode** credentials. The Dockerfiles retain an older Node base; the host workflow below lets you use your current runtime.
 
 ```bash
-# Install and configure
-npm install
+git clone https://github.com/volodymyrshk/stripeprocessing.git
+cd stripeprocessing
+npm ci
 cp .env.example .env
-# Edit .env with Stripe test keys
-
-# Start
-docker-compose up -d
-npm run prisma:generate && npm run prisma:migrate
-
-# Test
-npm run simulate-webhook
-curl http://localhost:3000/api/stats
+# Set Stripe test credentials and the signing secret in .env.
+docker compose up -d postgres redis
+npm run prisma:generate
+npx prisma db push
+npm run build
 ```
 
----
-
-## Key Features
-
-**Idempotency:**
-```typescript
-const isProcessed = await redisClient.isEventProcessed(event.id);
-if (isProcessed) return;
-```
-
-**Retry with exponential backoff:**
-```typescript
-await retryHandler.execute(
-  async () => crmApi.syncPayment(data),
-  'CRM Sync',
-  { maxAttempts: 3, exponentialBackoff: true }
-);
-```
-
-**Distributed locks:**
-```typescript
-const lock = await redisClient.acquireLock(`payment:${id}`, 30000);
-try { /* process */ } finally { await redisClient.releaseLock(`payment:${id}`, lock); }
-```
-
----
-
-## API Endpoints
-
-**Main (3000):**
-- `GET /health` - Health check
-- `GET /api/stats` - Stats
-- `POST /webhooks/stripe` - Webhook receiver
-
-**Mock CRM (3001):**
-- `POST /api/customers` - Sync customer
-- `POST /api/payments` - Sync payment
-
----
-
-## Dev
+Run the mock CRM in one terminal:
 
 ```bash
-docker-compose up postgres redis
-npm run dev
-docker-compose logs -f app
-npm test
+node --env-file=.env dist/mock-crm/server.js
 ```
+
+Run the application in another:
+
+```bash
+node --env-file=.env dist/index.js
+```
+
+Use a Stripe CLI test-mode listener to forward signed events to `http://localhost:3000/webhooks/stripe`; put its signing secret in `.env` before starting the app. `/health` checks the database, Redis and mock CRM; `/api/stats` reports stored payment and sync state.
+
+`npm run simulate-webhook` is an older fixture sender with a placeholder signature. It is **not** a successful signed-webhook demo; the receiver correctly rejects that signature.
+
+## Validation and scope
+
+`npm run build` was checked on 21 October 2026. `npm test -- --runInBand` needs a dedicated local Redis instance. The current tests cover Redis helpers and retry behavior; they do not establish end-to-end payment correctness.
+
+This sample acknowledges webhooks before asynchronous processing completes and uses time-limited Redis checks. That is not a durable delivery guarantee. It also does not establish ordering of payment-state transitions or exactly-once CRM effects. The admin/statistics endpoints are for a local demonstration and have no authentication layer.
+
+For a focused, dependency-free demonstration of **uncertain writes, crash recovery, tenant isolation and human approval**, start with [agent-reconciliation-harness](https://github.com/volodymyrshk/agent-reconciliation-harness). That reference makes the failure model and tested guarantees explicit.
+
+[Volodymyr Shkarban](https://volodymyr.space) · [GitHub](https://github.com/volodymyrshk)
