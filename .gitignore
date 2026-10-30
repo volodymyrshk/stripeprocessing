@@ -32,8 +32,8 @@ Thumbs.db
 # Claude
 .claude/
 
-# Prisma
-prisma/migrations/
+# Demo output
+artifacts/
 
 # Testing
 coverage/
